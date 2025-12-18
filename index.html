@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoE 2 Campaign Tracker</title>
+    
+    <!-- 1. Tailwind CSS (Tasarım için) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. React ve ReactDOM (Mantık için) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- 3. Babel (Kodu tarayıcının anlaması için) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 4. Google Fonts (Cinzel ve Lato fontları) -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        /* Kaydırma çubuğu özelleştirmesi */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #050404; }
+        ::-webkit-scrollbar-thumb { background: #3d342b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8c7a6b; }
+        body { margin: 0; padding: 0; background-color: #050404; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { createRoot } = ReactDOM;
+
+        // --- IKONLAR (SVG) ---
+        const Check = ({ size = 24, className, strokeWidth = 2 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>
+        );
+        const ChevronDown = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"></polyline></svg>
+        );
+        const ChevronUp = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="18 15 12 9 6 15"></polyline></svg>
+        );
+        const MapIcon = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+        );
+        const Skull = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="9" cy="12" r="1"></circle><circle cx="15" cy="12" r="1"></circle><path d="M8 20v2h8v-2"></path><path d="M12.5 17l-.5-4"></path><path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"></path></svg>
+        );
+        const Scroll = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2Z"></path><path d="M15 2v2"></path><path d="M15 20v2"></path><path d="M8 2v2"></path><path d="M8 20v2"></path><path d="M5 2h12"></path><path d="M5 22h12"></path></svg>
+        );
+        const RotateCcw = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+        );
+        const Award = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+        );
+
+        // --- UYGULAMA MANTIĞI ---
+        const CampaignTracker = () => {
+            const [activeTab, setActiveTab] = useState('act1');
+            const [completedSteps, setCompletedSteps] = useState({});
+            const [expandedZones, setExpandedZones] = useState({});
+
+            // LocalStorage Yükleme
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem('poe2-campaign-progress');
+                    if (saved) {
+                        setCompletedSteps(JSON.parse(saved));
+                    }
+                } catch (e) {
+                    // console.warn("LocalStorage erişimi engellendi.");
+                }
+            }, []);
+
+            // LocalStorage Kaydetme
+            useEffect(() => {
+                try {
+                    localStorage.setItem('poe2-campaign-progress', JSON.stringify(completedSteps));
+                } catch (e) {
+                    // Sessiz hata
+                }
+            }, [completedSteps]);
+
+            const toggleStep = (id) => {
+                setCompletedSteps(prev => ({ ...prev, [id]: !prev[id] }));
+            };
+
+            const toggleZone = (id) => {
+                setExpandedZones(prev => ({ ...prev, [id]: !prev[id] }));
+            };
+
+            const resetProgress = () => {
+                if (window.confirm("Tüm ilerlemeyi sıfırlamak istediğine emin misin? Exile?")) {
+                    setCompletedSteps({});
+                    try { localStorage.removeItem('poe2-campaign-progress'); } catch(e){}
+                }
+            };
+
+            const calculateProgress = (actId) => {
+                const actZones = data[actId] || [];
+                if (actZones.length === 0) return 0;
+                const completedCount = actZones.filter(z => completedSteps[z.id]).length;
+                return Math.round((completedCount / actZones.length) * 100);
+            };
+
+            const data = {
+                act1: [
+                  {
+                    id: "act1-riverbank",
+                    title: "The Riverbank",
+                    waypoint: false,
+                    boss: ["Bloated Miller"],
+                    quests: ["Reaching Clearfell (Uncut Skill Gem Level 1)"],
+                    content: "Oyun burada başlar. Bir hareket türü seçin, ileri doğru yürüyün ve yaralı adamla konuşun. Başlangıç silahınızı (Starting Weapon) almak için Zombie'yi yenin, ilerlemeden önce silahı kuşanın. Bölgenin ortasına doğru, ilk Skill Gem'inizi içeren Large Chest'i bulun. Öğretici adımlarını takip edin: Skill Gem'inizi Skill Gem Paneline (Varsayılan Kısayol: G) yerleştirmek için Skill Gem'e tıklayın. Skill Simgesine Sol Tıklayın ve Skill Bar'ınıza yerleştirin. The Bloated Miller'ı bulana kadar ilerlemeye devam edin. Bloated Miller'ı yenin, ganimetinizi toplayın ve The Clearfell Encampment'a gidin."
+                  },
+                  {
+                    id: "act1-encampment",
+                    title: "The Clearfell Encampment (Town)",
+                    waypoint: true,
+                    boss: [],
+                    quests: [],
+                    content: "Güvenli bölge. NPC'ler: Renly (Silah/Zırh), Una (Büyücü Eşyaları/Disenchant), Finn (Kumar). Hazırlıklarınızı yapın."
+                  },
+                  {
+                    id: "act1-clearfell",
+                    title: "Clearfell",
+                    waypoint: true,
+                    boss: ["Beira of the Rotten Pack"],
+                    quests: [],
+                    content: "Acil bir görev yok. Bölgenin merkezinde Beira of the Rotten Pack'i bulabilirsiniz (Ödül: Head of the Winter Wolf, +%10 Cold Res). Sağ tarafta Mud Burrow girişi ve Waypoint bulunur. Sağ üstte The Grelwood çıkışı vardır. Diğer tarafta Abandoned Stash (Uncut Skill Gem Level 1) bulunur."
+                  },
+                  {
+                    id: "act1-mudburrow",
+                    title: "The Mud Burrow",
+                    waypoint: false,
+                    boss: ["The Devourer (Optional)"],
+                    quests: ["Treacherous Ground"],
+                    content: "Dar ve kıvrımlı bir bölge. İsteğe bağlı olarak The Devourer boss'unu yenebilirsiniz. Kaos mermilerinden kaçınmak için Dodge Roll kullanın."
+                  },
+                  {
+                    id: "act1-grelwood",
+                    title: "The Grelwood",
+                    waypoint: true,
+                    boss: ["Gerung", "Areagne (Optional)"],
+                    quests: ["Secrets in the Dark"],
+                    content: "Açık ormanlık alan. Tree of Souls'u veya The Red Vale girişini arayın. Areagne, Forgotten Witch (Opsiyonel Boss) kulübesinde bulunabilir, yenmek Uncut Support Gem Level 1 verir. Kulübedeki kazan Medium Life & Mana Flask verir."
+                  },
+                  {
+                    id: "act1-redvale",
+                    title: "The Red Vale",
+                    waypoint: true,
+                    boss: ["The Rust King"],
+                    quests: ["Secrets in the Dark"],
+                    content: "3 adet Obelisks of Rust ile etkileşime geçin ve canavarları yenerek 3 Runed Girdle toplayın. Sonuncusunda The Rust King çıkar. Hepsini toplayınca kasabaya dönüp Renly ile konuşun ve Runed Spikes alın. Sonra The Grelwood'a dönün."
+                  },
+                  {
+                    id: "act1-return-grelwood",
+                    title: "Return to The Grelwood",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Secrets in the Dark"],
+                    content: "Tree of Souls'u bulun. Una'yı çağırın. Runed Spikes'ı üç Runic Seal'e saplayın. Una ile konuşun, kasabaya dönün, tekrar Una ile konuşun. Sonra The Grelwood'a dönüp The Grim Tangle'ı arayın."
+                  },
+                  {
+                    id: "act1-grimtangle",
+                    title: "The Grim Tangle",
+                    waypoint: true,
+                    boss: ["Ervig, Rotted Druid (Optional)"],
+                    quests: ["The Mysterious Shade"],
+                    content: "Cemetery of the Eternals girişini arayın."
+                  },
+                  {
+                    id: "act1-cemetery",
+                    title: "Cemetery of the Eternals",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Sorrow Among Stones"],
+                    content: "Tomb of the Consort ve Mausoleum of the Praetor girişlerini arayın. Kenarlarda Ancient Ruins (Iron Ring veya Lazuli Ring verir) bulunabilir."
+                  },
+                  {
+                    id: "act1-tomb",
+                    title: "Tomb of the Consort",
+                    waypoint: true,
+                    boss: ["Asinia, Praetor Consort"],
+                    quests: ["Sorrow Among Stones"],
+                    content: "Asinia'yı yenin ve Asinia’nın Memorial Key Piece parçasını alın. Haunted Treasure (Opsiyonel) Uncut Support Gem Level 1 verebilir."
+                  },
+                  {
+                    id: "act1-mausoleum",
+                    title: "The Mausoleum",
+                    waypoint: true,
+                    boss: ["Draven, Eternal Praetor"],
+                    quests: ["Sorrow Among Stones"],
+                    content: "Draven'ı yenin ve Draven’ın Memorial Key Piece parçasını alın. Forgotten Riches (Opsiyonel) Gold ve Rare Chest verir."
+                  },
+                  {
+                    id: "act1-return-cemetery",
+                    title: "Return to Cemetery of the Eternals",
+                    waypoint: true,
+                    boss: ["Lachlann of Endless Lament"],
+                    quests: ["Sorrow Among Stones", "Mysterious Shade"],
+                    content: "Memorial Gate'i açın (Lachlann'ın yanında). Onu mezara kadar takip edin. Lachlann of Endless Lament'e dönüşecek, onu yenin. Count Lachlann’s Ring'i alın. The Hunting Ground'a ilerleyin."
+                  },
+                  {
+                    id: "act1-hunting",
+                    title: "The Hunting Grounds",
+                    waypoint: true,
+                    boss: ["The Crowbell (Optional)"],
+                    quests: [],
+                    content: "Çok tehlikeli canavarlar var. The Crowbell (Opsiyonel) yenereseniz 2 Weapon Set Passive Skill Points verir. Freythorn ve Ogham Farmlands girişlerini arayın. Önce Freythorn önerilir."
+                  },
+                  {
+                    id: "act1-freythorn",
+                    title: "Freythorn",
+                    waypoint: true,
+                    boss: ["The King in the Mists"],
+                    quests: ["Ominous Altars"],
+                    content: "3 Ritual Altars bulup temizleyin. Sonra büyük olanı bulun. The King in the Mists ile savaşın. Mor debuff varsa hareket et, Kırmızı debuff varsa dur. Ödül: Gembloom Skull (+30 Spirit) ve Uncut Spirit Gem Level 4. Kasabada Finn ile konuşup Charm ödülü alın."
+                  },
+                  {
+                    id: "act1-ogham-farm",
+                    title: "Ogham Farmlands",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["The Lost Lute"],
+                    content: "Una’nın Lute'unu içeren kulübeyi bulun. Lute'u alıp kasabada Una ile konuşun (Ödül: 2 Weapon Set Passive Skill Points)."
+                  },
+                  {
+                    id: "act1-ogham-village",
+                    title: "Ogham Village",
+                    waypoint: true,
+                    boss: ["The Executioner"],
+                    quests: ["The Trail of Corruption", "Finding the Forge"],
+                    content: "Renly’nin Smithing Tools eşyasını bulun (Finding the Forge görevi, Salvage Bench açar). Yakındaki Blacksmith's Chest'ten Artificer's Orb ve Blank Rune alın. The Executioner'ı yenin. Esiri serbest bırakın ve Manor Ramparts'a geçin."
+                  },
+                  {
+                    id: "act1-ramparts",
+                    title: "The Manor Ramparts",
+                    waypoint: true,
+                    boss: [],
+                    quests: [],
+                    content: "Oghman Manor girişini arayın. Kenarlarda The Gallows (Secret) olabilir (Uncut Support Gem Level 1)."
+                  },
+                  {
+                    id: "act1-manor",
+                    title: "Oghman Manor",
+                    waypoint: true,
+                    boss: ["Count Geonor", "Candlemass (Optional)"],
+                    quests: ["The Mad Wolf of Ogham"],
+                    content: "1. Katta Candlemass'ı yenin (+20 Max Life). Son katta Count Geonor ile savaşın. %50 canın altına inince kurt formuna geçer ve sis çağıdır. Sisten sonra alana AoE saldırıları yapar. Yendikten sonra kasabaya dönün, Hooded One ile konuşun ve 'Follow the Beast’s trail' diyerek Act 2'ye geçin."
+                  }
+                ],
+                act2: [
+                  {
+                    id: "act2-vastiri",
+                    title: "Vastiri Outskirts (Combat Town)",
+                    waypoint: true,
+                    boss: ["Rathbreaker"],
+                    quests: ["Earning Passage"],
+                    content: "Kasabanın savaş alanında Rathbreaker'ı bulun ve yenin. Dikkat: Yukarıdaki uçurumlardan mızrak atanlar vardır. Savaştan sonra Zarka ile konuşun (Ödül: Uncut Skill Gem Level 5)."
+                  },
+                  {
+                    id: "act2-caravan",
+                    title: "The Ardura Caravan (Town)",
+                    waypoint: false,
+                    boss: [],
+                    quests: [],
+                    content: "Güvenli bölge. Hooded One ve Sekhema Asala ile konuşun. Desert Map'i açıp Mawdun Quarry'ye gidin."
+                  },
+                  {
+                    id: "act2-quarry",
+                    title: "Mawdun Quarry",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["The Trail of Corruption"],
+                    content: "Mawdun Mine girişini arayın. Faridun War Cache (Opsiyonel) Artificer's Orb verir."
+                  },
+                  {
+                    id: "act2-mine",
+                    title: "Mawdun Mine",
+                    waypoint: true,
+                    boss: ["Rudja, the Dread Engineer"],
+                    quests: ["The Trail of Corruption"],
+                    content: "Rudja'yı yenin (Ateş direnci önerilir). Risu'yu kafesten kurtarın. Kasabaya dönün, Risu ve Sekhema Asala ile konuşun. Halani Gates'e gitmeyi deneyin."
+                  },
+                  {
+                    id: "act2-halani-closed",
+                    title: "The Halani Gates (Closed)",
+                    waypoint: false,
+                    boss: [],
+                    quests: [],
+                    content: "Kapılar kapalı. Kasabaya dönün, konuşmaları yapın ve Desert Map üzerinden Traitor’s Passage'a gidin."
+                  },
+                  {
+                    id: "act2-traitor",
+                    title: "Traitor’s Passage",
+                    waypoint: true,
+                    boss: ["Balbala, The Traitor (Optional)"],
+                    quests: [],
+                    content: "Halani Gates'e giden girişi arayın. Balbala'yı yenmek Trial of the Sekhemas'ı açar (Ascension)."
+                  },
+                  {
+                    id: "act2-halani-open",
+                    title: "The Halani Gates",
+                    waypoint: true,
+                    boss: ["Jamanra, the Risen King"],
+                    quests: ["Trail of Corruption"],
+                    content: "3 kapı kolunu açmak için Asala'yı koruyun. Jamanra ile savaşın, canı azalınca kaçacak. Kum fırtınası yolu tıkıyor. Kasabaya dönün, Zarka ile konuşun (Ödül: Uncut Skill Gem Level 7)."
+                  },
+                  {
+                    id: "act2-mastodon",
+                    title: "Mastodon Badlands",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["A Theft of Ivory", "Ancient Vows"],
+                    content: "Bone Pits girişini arayın. Kenarlarda Effigy Secret (Uncut Support Gem Level 2) olabilir."
+                  },
+                  {
+                    id: "act2-bonepits",
+                    title: "The Bone Pits",
+                    waypoint: true,
+                    boss: ["Iktab, the Deathlord & Ekbab"],
+                    quests: ["A Theft of Ivory"],
+                    content: "Iktab & Ekbab'ı yenip Mastodon Tusks'ı alın. Ayrıca Sun Clan Relic'i bulana kadar arayın (Ancient Vows görevi için). Kasabaya dönüp Zarka'ya verin."
+                  },
+                  {
+                    id: "act2-keth",
+                    title: "Keth",
+                    waypoint: true,
+                    boss: ["Kabala (Optional)"],
+                    quests: ["The City of Seven Waters"],
+                    content: "Lost City girişini arayın. Kabala, Constrictor Queen'i yenerseniz 2 Weapon Set Passive puanı verir."
+                  },
+                  {
+                    id: "act2-lostcity",
+                    title: "The Lost City",
+                    waypoint: true,
+                    boss: [],
+                    quests: [],
+                    content: "Buried Shrines girişini arayın. Kabala Clan Relic'i burada veya Buried Shrines'da bulabilirsiniz."
+                  },
+                  {
+                    id: "act2-buried",
+                    title: "Buried Shrines",
+                    waypoint: true,
+                    boss: ["Azarian, The Forsaken Son"],
+                    quests: ["The City of Seven Waters"],
+                    content: "Azarian'ı (Ateş Bossu) yenin. Elemental Shrine'dan yüzük seçebilirsiniz (Ateş direnci için Ruby Ring önerilir). Azarian ölünce Water Goddess ile konuşun, Essence of Water'ı alın. Kasabaya dönün."
+                  },
+                  {
+                    id: "act2-valley",
+                    title: "Valley of the Titans",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["A Crown of Stone", "Ancient Vows"],
+                    content: "3 Ancient Seals bulun. Titan Grotto'yu açın. Relic Altar'a Sun ve Kabala Clan Reliclerini koyarak kalıcı Charm slotu ve buff kazanın."
+                  },
+                  {
+                    id: "act2-grotto",
+                    title: "The Titan Grotto",
+                    waypoint: true,
+                    boss: ["Zalmarath, the Colossus"],
+                    quests: ["A Crown of Stone"],
+                    content: "Zalmarath'ı yenin. Flame Ruby'yi alın. Kasabaya dönün, Zarka ile konuşun. Horn of the Vastiri'yi alın. Kasabanın tepesine çıkıp Horn'u üfleyin (Sound the Horn). Kum fırtınası kalkacak."
+                  },
+                  {
+                    id: "act2-deshar",
+                    title: "Deshar",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["The Trail of Corruption", "Tradition’s Toll"],
+                    content: "Path of Mourning'i arayın. Fallen Dekhara'yı bulursanız (Opsiyonel) 2 Weapon Set Passive puanı alırsınız."
+                  },
+                  {
+                    id: "act2-mourning",
+                    title: "Path of Mourning",
+                    waypoint: true,
+                    boss: [],
+                    quests: [],
+                    content: "Spires of Deshar girişini arayın."
+                  },
+                  {
+                    id: "act2-spires",
+                    title: "The Spires of Deshar",
+                    waypoint: true,
+                    boss: ["Tor Gul, the Defiler"],
+                    quests: [],
+                    content: "Tor Gul'u yenin. Kasabaya dönün, Sekhema Asala ile konuşun. Dreadnought'a gidin. Sisters of Garukhan ile etkileşime girip +%10 Lightning Res alın."
+                  },
+                  {
+                    id: "act2-dreadnought",
+                    title: "The Dreadnought",
+                    waypoint: true,
+                    boss: [],
+                    quests: [],
+                    content: "Dreadnought Vanguard'a doğru ilerleyin."
+                  },
+                  {
+                    id: "act2-vanguard",
+                    title: "Dreadnought Vanguard",
+                    waypoint: true,
+                    boss: ["Jamanra, the Abomination"],
+                    quests: ["The Trail of Corruption"],
+                    content: "Jamanra ile final savaşı. Faz 1: Yıldırım büyüleri ve pylonlar. Faz 2: Kılıç saldırıları ve hortumlar. Yendikten sonra Sekhema Asala ile konuşun. Kasabaya dönün, Hooded One ve Asala ile konuşun, Sandswept Marsh (Act 3) yolculuğunu seçin."
+                  }
+                ],
+                act3: [
+                  {
+                    id: "act3-marsh",
+                    title: "Sandswept Marsh (Combat Town)",
+                    waypoint: true,
+                    boss: ["Rootdredge (Optional)"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Ziggurat'ı arayın. Orok Campfire ve Hanging Tree gizli bölgelerdir. Rootdredge'i yenmek Uncut Skill Gem Level 9 verir."
+                  },
+                  {
+                    id: "act3-ziggurat",
+                    title: "Ziggurat Encampment (Town)",
+                    waypoint: false,
+                    boss: [],
+                    quests: [],
+                    content: "Alva, Oswald ve Hooded One ile konuşun. Jungle Ruins çıkışını kullanın."
+                  },
+                  {
+                    id: "act3-jungle",
+                    title: "Jungle Ruins",
+                    waypoint: true,
+                    boss: ["Mighty Silverfist (Optional)"],
+                    quests: [],
+                    content: "Matlan Waterways'i arayın. Mighty Silverfist yenilirse 2 Weapon Set Passive puanı verir. Venom Crypts girişini bulursanız girin."
+                  },
+                  {
+                    id: "act3-venom",
+                    title: "The Venom Crypts",
+                    waypoint: false,
+                    boss: [],
+                    quests: ["The Slithering Dead"],
+                    content: "Corpse-snake Venom'u bulun, kasabada Servi'ye götürün. Kalıcı buff seçimi yapın (Stun Threshold, Ailment Threshold veya Mana Regen)."
+                  },
+                  {
+                    id: "act3-barrens",
+                    title: "Infested Barrens",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Matlan Waterways su altında. Alva'yı çağırıp konuşun. Chimeral Wetlands'i arayın. Azak Bog yan bölgesine gidin."
+                  },
+                  {
+                    id: "act3-azak",
+                    title: "The Azak Bog",
+                    waypoint: true,
+                    boss: ["Ignagduk, the Bog Witch"],
+                    quests: ["Tribal Vengeance"],
+                    content: "Flameskin Ritual'i tamamlayıp ateş direnci kazanın. Ignagduk'u yenin (Gembloom Skull: +30 Spirit). Kasabada Servi'ye mızrağı verip Charm ödülü alın."
+                  },
+                  {
+                    id: "act3-chimeral",
+                    title: "Chimeral Wetlands",
+                    waypoint: true,
+                    boss: ["Xyclucian, the Chimera"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Jiquani’s Machinarium girişini arayın. Girişi Xyclucian korur. Yendikten sonra Chimeral Inscribed Ultimatum'u alın. Temple of Chaos (Ascension) buradadır."
+                  },
+                  {
+                    id: "act3-machinarium",
+                    title: "Jiquani’s Machinarium",
+                    waypoint: true,
+                    boss: ["Blackjaw, the Remnant (Optional)"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Small Soul Core'ları toplayarak kapıları açın. Blackjaw'ı yenerseniz Flame Core (+%10 Fire Res) verir. Jiquani’s Sanctum'a ilerleyin."
+                  },
+                  {
+                    id: "act3-sanctum",
+                    title: "Jiquani’s Sanctum",
+                    waypoint: true,
+                    boss: ["Zicoatl, Warden of the Core"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "2 Medium Soul Core bulun, jeneratörlere takın. Alva ile konuşun. Zicoatl'ı yenin (Şimşek Bossu). Large Soul Core'u alın. Infested Barrens'a dönüp Stone Altar ile etkileşime girerek Matlan Waterways girişini yüzeye çıkarın."
+                  },
+                  {
+                    id: "act3-waterways",
+                    title: "The Matlan Waterways",
+                    waypoint: false,
+                    boss: [],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Su seviyesini düşürmek için kolları çekin. Sonda büyük kolu çekin. Kasabaya dönün, Ziggurat'ın altındaki Alva ile konuşup Drowned City'ye girin."
+                  },
+                  {
+                    id: "act3-drowned",
+                    title: "The Drowned City",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Apex of Filth'e gidin. İsteğe bağlı olarak Molten Vault'a girebilirsiniz (Önerilir)."
+                  },
+                  {
+                    id: "act3-molten",
+                    title: "The Molten Vault",
+                    waypoint: true,
+                    boss: ["Mektul, the Forgemaster"],
+                    quests: ["Treasures of Utzaal"],
+                    content: "Mektul'u yenin (Zaman sınırı var, altın odayı doldurmadan öldürün). Reforging Bench açılır. Hammer of Kamasa'yı Oswald'a götürün."
+                  },
+                  {
+                    id: "act3-apex",
+                    title: "Apex of Filth",
+                    waypoint: true,
+                    boss: ["Queen of Filth"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Queen of Filth'i yenin. Temple Door Idol'ü alın. Kasabaya dönüp Alva ile konuşun. Temple of Kopec açılacak."
+                  },
+                  {
+                    id: "act3-kopec",
+                    title: "Temple of Kopec",
+                    waypoint: false,
+                    boss: ["Ketzuli, High Priest of the Sun"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Güneş ışığında durmayın (yanarsınız). Ketzuli'yi (Ateş Bossu) yenin. Alva ile konuşun, kanını feda edecek. Ziggurat'a dönün ve zaman portalından geçmişe gidin."
+                  },
+                  {
+                    id: "act3-utzaal",
+                    title: "Utzaal (Past)",
+                    waypoint: true,
+                    boss: ["Viper Napuatzi"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Viper Napuatzi ile çok zorlu bir savaş yapacaksınız (Kaos hasarı). Yendikten sonra Aggorat (Past) bölgesini arayın. Sacrificial Heart bulursanız sonraki bölgede kullanın."
+                  },
+                  {
+                    id: "act3-aggorat",
+                    title: "Aggorat (Past)",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Black Chambers girişini arayın. Sacrificial Heart'ı sunakta bıçaklayıp 2 Weapon Set Passive puanı alabilirsiniz."
+                  },
+                  {
+                    id: "act3-blackchambers",
+                    title: "The Black Chambers (Past)",
+                    waypoint: true,
+                    boss: ["Doryani, Royal Thaumaturge"],
+                    quests: ["Legacy of the Vaal"],
+                    content: "Act 3 Final Bossu. Faz 1: Doryani insan formu. Faz 2: Doryani's Triumph (Mech). Mech'in bacaklarını ve lazerlerini yok edin. Savaştan sonra kasabaya portal açın, Doryani ile konuşun, Cataclysm'i başlatın. Günümüze dönünce Doryani, Hooded One ve Alva ile konuşup Kingsmarch'a gidin."
+                  }
+                ],
+                act4: [
+                  {
+                    id: "act4-kingsmarch",
+                    title: "Kingsmarch (Town)",
+                    waypoint: false,
+                    boss: [],
+                    quests: [],
+                    content: "Doryani, Alva, Rog, Tujen ve Ange ile konuşun. Limanda Kanu ve Makoru ile konuşun. Rog'dan Boat Charter alın. Makoru ile konuşup yelken açın. Önce Arastas (Caster Shop) veya Ngakanu (Blacksmith) adalarına uğrayabilirsiniz."
+                  },
+                  {
+                    id: "act4-islekin",
+                    title: "Isle of Kin",
+                    waypoint: true,
+                    boss: ["The Blind Beast (Optional)"],
+                    quests: ["The Search"],
+                    content: "Volcanic Warrens'ı arayın. The Blind Beast'i (Opsiyonel) yenerseniz 2 Weapon Set Passive puanı verir. Voltaxic Spire buff verir."
+                  },
+                  {
+                    id: "act4-volcanic",
+                    title: "Volcanic Warrens",
+                    waypoint: true,
+                    boss: ["Krutog, Lord of Kin"],
+                    quests: ["The Search"],
+                    content: "Krutog'u yenin. Matiki'yi kafesten kurtarın. Kasabaya dönüp gemide Matiki ile konuşun. Eye of Hinekora açılır."
+                  },
+                  {
+                    id: "act4-kedge",
+                    title: "Kedge Bay",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Dark Mists", "The Search"],
+                    content: "Journey's End'e ilerleyin. Weapon Pieces arayın."
+                  },
+                  {
+                    id: "act4-journey",
+                    title: "Journey's End",
+                    waypoint: true,
+                    boss: ["Captain Hartlin", "Omniphobia (Freya)"],
+                    quests: ["The Search"],
+                    content: "Tujen'i çağırın. Captain Hartlin'i yenip Verisium alın. Kasabada Dannig'den Verisium Spikes alın. Geri dönüp Freya'yı kurtarın (Aslında Omniphobia'dır, onu da yenin). Tujen ile konuşun."
+                  },
+                  {
+                    id: "act4-prison",
+                    title: "Abandoned Prison",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["The Search", "Abandoned Prison"],
+                    content: "Solitary Confinement'ı arayın. Chapel Key bulursanız Chapel'deki Goddess of Justice'den Life veya Mana Flask Recovery buff'ı alın."
+                  },
+                  {
+                    id: "act4-solitary",
+                    title: "Solitary Confinement",
+                    waypoint: true,
+                    boss: ["The Prisoner"],
+                    quests: ["The Search", "Abandoned Prison"],
+                    content: "Su seviyesi yükselip alçalır. The Prisoner iyileşmeye başladığında (Staggered), kenardaki balistaları kullanarak onu vurun. Yendikten sonra Hooded One ile konuşun."
+                  },
+                  {
+                    id: "act4-eye",
+                    title: "Eye of Hinekora",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["Trial of Ancestors"],
+                    content: "Matiki ve Navali ile konuşun. Well of Passing'e bakın. Kaom, Maata ve Rakiata'nın testlerini geçin. Sonda Silent Hall gizli bölgesinde +%5 Max Mana alın."
+                  },
+                  {
+                    id: "act4-halls",
+                    title: "Halls of the Dead",
+                    waypoint: true,
+                    boss: ["Yama, the White"],
+                    quests: ["Trial of Ancestors"],
+                    content: "Yama'yı arayın. Test of Strength'leri yaparak Tattoo (kalıcı stat) kazanabilirsiniz. Yama'yı yenin, Silver Coin alın. Trial of the Ancestors'a girip Navali ile konuşun (2 Weapon Set Passive puanı)."
+                  },
+                  {
+                    id: "act4-whakapanu",
+                    title: "Whakapanu Island",
+                    waypoint: true,
+                    boss: ["Great White One (Optional)"],
+                    quests: ["The Search", "Whakapanu Island"],
+                    content: "Singing Caverns girişini arayın. Shark Pit'teki köpekbalığını yenerseniz Shark Fin düşer (Kaimana'ya vererek ödül seçin)."
+                  },
+                  {
+                    id: "act4-singing",
+                    title: "Singing Caverns",
+                    waypoint: true,
+                    boss: ["Diamora, Song of Death"],
+                    quests: ["The Search", "Whakapanu Island"],
+                    content: "Diamora'yı yenin (Siren, donma ve taşlaşma etkisine dikkat). Hooded One ile konuşun."
+                  },
+                  {
+                    id: "act4-shrike",
+                    title: "Shrike Island",
+                    waypoint: true,
+                    boss: ["Scourge of the Skies"],
+                    quests: ["The Search", "Shrike Island"],
+                    content: "Scourge of the Skies'ı yenin. Hooded One ve Makoru ile konuşun. Arastas'a yelken açın. Corpse Nest'ten 4. Torn Map Piece'i alıp Plunder's Point'i (Expedition) açabilirsiniz."
+                  },
+                  {
+                    id: "act4-arastas",
+                    title: "Arastas",
+                    waypoint: true,
+                    boss: ["Torvian, Hand of the Saviour"],
+                    quests: ["The Search"],
+                    content: "Missionary Lorandis ile konuşun (Tuzak!). Excavation'ı arayın. Torvian ile savaşın (Kaya atarken büyücülerin yanına saklanın)."
+                  },
+                  {
+                    id: "act4-excavation",
+                    title: "The Excavation",
+                    waypoint: true,
+                    boss: ["Benedictus, First Herald"],
+                    quests: ["The Search"],
+                    content: "Benedictus'u yenin. Tavakai ve Makoru'yu silaha kadar takip edin. Hooded One silahı döverken yine ihanete uğrayacaksınız. Tavakai kaçacak. Kasabaya dönün, Rhodri ile konuşup Ngakanu'ya gidin."
+                  },
+                  {
+                    id: "act4-ngakanu",
+                    title: "Ngakanu",
+                    waypoint: true,
+                    boss: [],
+                    quests: ["The Search"],
+                    content: "Heart of the Tribe bölgesini arayın."
+                  },
+                  {
+                    id: "act4-heart",
+                    title: "Heart of the Tribe",
+                    waypoint: true,
+                    boss: ["Tavakai, the Chieftain"],
+                    quests: ["The Search"],
+                    content: "Act 4 Final Bossu Tavakai ile savaşın. Yendikten sonra Hooded One onu iyileştirecek. Kingsmarch'a dönün. Tebrikler, Interlude'lar açıldı!"
+                  }
+                ],
+                interludes: [
+                  {
+                    id: "int1",
+                    title: "Interlude 1: Curse of Holten",
+                    waypoint: false,
+                    boss: ["Isolde & Heldra", "Siora", "Thane Wulfric & Lady Elyswyth"],
+                    quests: ["Recruit the Ezomytes"],
+                    content: "Ogham bölgesine dönüş. Refuge kasabasında görevleri alın. Scorched Farmlands'de Isolde ve Heldra'yı yenin. Stones of Serle'de Megalithleri açıp Siora'yı yenin. Blackwood'dan geçip Holten'a gidin. Holten Estate'te Thane ve Lady'yi yenin."
+                  },
+                  {
+                    id: "int2",
+                    title: "Interlude 2: The Stolen Barya",
+                    waypoint: false,
+                    boss: ["Akthi & Anundr", "Elzarah", "Azmadi"],
+                    quests: ["Recruit the Maraketh"],
+                    content: "Vastiri çölüne dönüş. Khari Crossing'de Akthi ve Anundr'u yenin. Sel Khari Sanctuary'de Elzarah'ı yenin. Galai Gates'ten geçip Qimah Reservoir'da Azmadi'yi yenin."
+                  },
+                  {
+                    id: "int3",
+                    title: "Interlude 3: Doryani's Contingency",
+                    waypoint: false,
+                    boss: ["Lythara", "Rakkar", "Stormgore", "Zolin & Zelina"],
+                    quests: ["Recruit the Vaal"],
+                    content: "Doryani'ye yardım edin. Kriar Village'da Lythara'yı yenin (Zorlu). Glacial Tarn'da Rakkar'ı geçin. Howling Caves'te Yeti'yi yenin (Opsiyonel). Etched Ravine'de Stormgore'u yenin. Cuachic Vault'ta Zolin ve Zelina'yı yenip Vaal soyundan gelenleri ikna edin. Endgame'e (Ziggurat Refuge) geçin."
+                  }
+                ]
+            };
+
+            const acts = [
+                { id: 'act1', label: 'Act I' },
+                { id: 'act2', label: 'Act II' },
+                { id: 'act3', label: 'Act III' },
+                { id: 'act4', label: 'Act IV' },
+                { id: 'interludes', label: 'Interludes' }
+            ];
+
+            const currentData = data[activeTab];
+
+            return (
+                <div className="min-h-screen bg-[#050404] text-[#a38d6d] p-4 font-['Lato'] selection:bg-[#4a1c1c] selection:text-[#d4af37] bg-[radial-gradient(circle_at_center,_#1c1917_0%,_#000000_100%)]">
+                  
+                  {/* Arka Plan Dokusu */}
+                  <div className="fixed inset-0 pointer-events-none opacity-20 z-0" style={{backgroundImage: "url('https://www.transparenttextures.com/patterns/dark-matter.png')"}}></div>
+
+                  <div className="max-w-4xl mx-auto space-y-10 relative z-10">
+                    
+                    {/* Başlık */}
+                    <header className="relative text-center py-8 border-b-2 border-[#3d342b] bg-gradient-to-b from-black/80 to-transparent">
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent"></div>
+                      
+                      <h1 className="text-5xl md:text-6xl font-['Cinzel'] font-bold text-transparent bg-clip-text bg-gradient-to-b from-[#e3d0a6] via-[#c2a065] to-[#7a5e35] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] mb-2 tracking-wider">
+                        PATH OF EXILE 2
+                      </h1>
+                      <p className="text-[#8c7a6b] text-lg font-['Cinzel'] tracking-[0.3em] uppercase border-t border-b border-[#3d342b] inline-block px-8 py-1 bg-black/40">
+                        Campaign Walkthrough
+                      </p>
+
+                      {/* İlerleme Çubuğu */}
+                      <div className="mt-8 max-w-xl mx-auto">
+                         <div className="flex justify-between text-xs font-['Cinzel'] text-[#d4af37] mb-1 px-1 tracking-widest">
+                           <span>{acts.find(a => a.id === activeTab).label} PROGRESS</span>
+                           <span>{calculateProgress(activeTab)}%</span>
+                         </div>
+                         <div className="h-3 bg-[#0f0e0d] border border-[#3d342b] p-[1px] shadow-[inset_0_0_10px_black]">
+                           <div 
+                             className="h-full bg-gradient-to-r from-[#591212] via-[#8a1c1c] to-[#b32424] shadow-[0_0_10px_#ff4d4d33] transition-all duration-700 relative overflow-hidden"
+                             style={{ width: `${calculateProgress(activeTab)}%` }}
+                           >
+                             <div className="absolute inset-0 opacity-30" style={{backgroundImage: "url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')"}}></div>
+                           </div>
+                         </div>
+                      </div>
+                    </header>
+
+                    {/* Navigasyon */}
+                    <nav className="flex flex-wrap justify-center gap-4 relative">
+                      <div className="absolute top-1/2 left-0 w-full h-[1px] bg-[#3d342b] -z-10"></div>
+                      
+                      {acts.map((act) => (
+                        <button
+                          key={act.id}
+                          onClick={() => setActiveTab(act.id)}
+                          className={`
+                            relative px-8 py-3 min-w-[120px] 
+                            font-['Cinzel'] font-bold text-sm tracking-[0.15em] uppercase 
+                            transition-all duration-300
+                            border-2
+                            ${activeTab === act.id
+                              ? 'bg-[#1a1614] border-[#d4af37] text-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.15)] transform -translate-y-1'
+                              : 'bg-[#0f0e0d] border-[#3d342b] text-[#6b5d52] hover:border-[#8c7a6b] hover:text-[#a38d6d] hover:-translate-y-0.5'
+                            }
+                          `}
+                          style={{
+                            clipPath: "polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%)"
+                          }}
+                        >
+                          {act.label}
+                          {activeTab === act.id && (
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#d4af37]/10 to-transparent pointer-events-none"></div>
+                          )}
+                        </button>
+                      ))}
+                    </nav>
+
+                    {/* Liste */}
+                    <div className="space-y-4">
+                      {currentData.map((zone) => {
+                        const isCompleted = completedSteps[zone.id];
+                        const isExpanded = expandedZones[zone.id];
+
+                        return (
+                          <div 
+                            key={zone.id} 
+                            className={`
+                              relative border transition-all duration-500 group
+                              ${isCompleted 
+                                ? 'border-[#2a2522] bg-[#0c0a09]/80 opacity-60 grayscale-[0.5]' 
+                                : 'border-[#3d342b] bg-[#141210] hover:border-[#6b5d52] shadow-[0_4px_20px_black]'
+                              }
+                            `}
+                          >
+                            <div 
+                              className="flex items-center p-4 gap-5 cursor-pointer select-none relative overflow-hidden"
+                            >
+                               <div className="absolute inset-0 bg-gradient-to-r from-[#d4af37]/0 via-[#d4af37]/5 to-[#d4af37]/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 pointer-events-none"></div>
+
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleStep(zone.id); }}
+                                className={`
+                                  flex-shrink-0 w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all duration-300 shadow-inner z-10
+                                  ${isCompleted 
+                                    ? 'bg-[#1a2e1a] border-[#2e5c2e] text-[#4ade80] shadow-[0_0_15px_#2e5c2e]' 
+                                    : 'bg-[#0a0908] border-[#3d342b] text-transparent hover:border-[#d4af37] hover:shadow-[0_0_10px_#d4af3733]'
+                                  }
+                                `}
+                              >
+                                {isCompleted ? <Check size={28} strokeWidth={3} /> : <div className="w-2 h-2 rounded-full bg-[#1c1917]"></div>}
+                              </button>
+
+                              <div className="flex-grow" onClick={() => toggleZone(zone.id)}>
+                                <div className="flex items-center gap-3">
+                                     <h3 className={`font-['Cinzel'] text-xl md:text-2xl font-bold tracking-wide transition-colors ${
+                                        isCompleted ? 'text-[#5c524b] line-through decoration-[#3d342b]' : 'text-[#e3d0a6] group-hover:text-[#fff]'
+                                        }`}>
+                                        {zone.title}
+                                    </h3>
+                                     {zone.waypoint && (
+                                       <div className="bg-[#1e3a8a]/20 border border-[#1e3a8a]/50 p-1 rounded-full" title="Waypoint">
+                                         <MapIcon size={14} className="text-[#60a5fa]" />
+                                       </div>
+                                     )}
+                                </div>
+
+                                {!isExpanded && (
+                                  <div className="flex flex-wrap gap-4 text-xs mt-2 font-['Cinzel'] tracking-wider opacity-60">
+                                     {zone.boss.length > 0 && (
+                                         <span className="text-[#ef4444] flex items-center gap-1 drop-shadow-md"><Skull size={12}/> {zone.boss.length} BOSS</span>
+                                     )}
+                                     {zone.quests.length > 0 && (
+                                         <span className="text-[#d4af37] flex items-center gap-1 drop-shadow-md"><Award size={12}/> QUEST</span>
+                                     )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); toggleZone(zone.id); }}
+                                className="text-[#6b5d52] group-hover:text-[#d4af37] transition-colors p-2 z-10"
+                              >
+                                {isExpanded ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+                              </button>
+                            </div>
+
+                            <div 
+                              className={`
+                                overflow-hidden transition-all duration-500 ease-in-out border-t border-[#3d342b]
+                                ${isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}
+                              `}
+                            >
+                              <div className="p-6 bg-[#080706] relative">
+                                <Scroll className="absolute top-4 right-4 text-[#1c1917] w-32 h-32 opacity-20 -rotate-12" />
+
+                                <div className="space-y-6 relative z-10">
+                                  
+                                  <div className="flex items-center gap-2 text-xs font-['Cinzel'] tracking-[0.2em] text-[#6b5d52]">
+                                     <span className="uppercase">Waypoint Status:</span>
+                                     <span className={`px-2 py-0.5 border ${zone.waypoint ? "text-[#4ade80] border-[#14532d] bg-[#052e16]" : "text-[#f87171] border-[#450a0a] bg-[#450a0a]/20"}`}>
+                                       {zone.waypoint ? "ACTIVE" : "MISSING"}
+                                     </span>
+                                  </div>
+
+                                  {zone.boss.length > 0 && (
+                                    <div className="bg-[#2b0e0e]/30 border-l-2 border-[#7f1d1d] p-4">
+                                      <div className="flex items-center gap-2 text-[#fca5a5] font-['Cinzel'] font-bold mb-2">
+                                        <Skull size={16} />
+                                        <span className="uppercase tracking-widest text-sm">Target Enemies</span>
+                                      </div>
+                                      <ul className="space-y-1 ml-1">
+                                        {zone.boss.map((b, i) => (
+                                          <li key={i} className="flex items-center gap-2 text-[#fee2e2] text-sm">
+                                            <span className="w-1.5 h-1.5 bg-[#7f1d1d] rotate-45"></span>
+                                            {b}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+
+                                  {zone.quests.length > 0 && (
+                                    <div className="bg-[#292010]/30 border-l-2 border-[#d4af37] p-4">
+                                      <div className="flex items-center gap-2 text-[#fcd34d] font-['Cinzel'] font-bold mb-2">
+                                        <Award size={16} />
+                                        <span className="uppercase tracking-widest text-sm">Quest Rewards</span>
+                                      </div>
+                                      <ul className="space-y-1 ml-1">
+                                        {zone.quests.map((q, i) => (
+                                          <li key={i} className="flex items-center gap-2 text-[#fef3c7] text-sm">
+                                            <span className="w-1.5 h-1.5 bg-[#d4af37] rotate-45"></span>
+                                            {q}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+
+                                  <div className="text-[#a8a29e] leading-7 font-['Lato'] text-[15px] border-t border-[#1c1917] pt-4">
+                                    {zone.content}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex justify-center pt-12 pb-20">
+                        <button 
+                          onClick={resetProgress}
+                          className="group flex items-center gap-3 px-6 py-2 border border-[#450a0a] bg-[#1a0505] text-[#f87171] hover:bg-[#450a0a] hover:text-white transition-all duration-300 font-['Cinzel'] text-xs tracking-[0.2em]"
+                        >
+                          <RotateCcw size={14} className="group-hover:-rotate-180 transition-transform duration-700" />
+                          RESET JOURNEY
+                        </button>
+                    </div>
+
+                  </div>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById("root"));
+        root.render(<CampaignTracker />);
+    </script>
+</body>
+</html>
